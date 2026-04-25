@@ -1,0 +1,41 @@
+{
+  "name": "ddar-engine",
+  "version": "1.0.1",
+  "description": "Dynamics-Driven Atomic Resonance (DDAR) - A deterministic, real-time content recommendation engine. No ML, no training, no embeddings. Pure closed-form rules and bitwise operations.",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "scripts": {
+    "test": "node test/test.js",
+    "example": "node examples/basic-feed.js"
+  },
+  "keywords": [
+    "recommendation",
+    "feed",
+    "real-time",
+    "deterministic",
+    "content-ranking",
+    "activity-feed",
+    "social-feed",
+    "news-feed",
+    "ddar",
+    "no-ml",
+    "resonance"
+  ],
+  "author": "bsissa22",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bsissa22/semantic-search"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "src/",
+    "examples/",
+    "README.md",
+    "LICENSE"
+  ]
+}
