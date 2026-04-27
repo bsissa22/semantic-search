@@ -114,49 +114,56 @@ function RoomContent() {
     if (!user) return;
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    // Use the same origin for WebSocket signaling - fallback to polling-based signaling
-    // Since Next.js on Vercel doesn't support native WebSocket, we use a polling approach
+    // Connect to the Cloudflare Worker signaling server via WebSocket
     const connectSignaling = () => {
       setStatus(role === "streamer" ? "Ready to stream" : "Connecting to room...");
 
-      // For demo/deployment, use BroadcastChannel for same-tab P2P
-      // and polling API for cross-device signaling
-      const channel = new BroadcastChannel(`partme-room-${roomId}`);
+      const partyHost = process.env.NEXT_PUBLIC_PARTY_HOST || "partme-signaling.louatimahdi390.workers.dev";
+      const wsUrl = `wss://${partyHost}?room=${roomId}`;
 
-      channel.onmessage = (event) => {
-        const msg = event.data as SignalMessage;
-        handleSignalMessage(msg);
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        setStatus(role === "streamer" ? "Ready to stream" : "Connected to room");
+        // Send join message once connected
+        sendSignal({
+          type: "join",
+          role,
+          username: user!.username,
+          roomId,
+        });
       };
 
-      // Store channel ref for sending
-      wsRef.current = {
-        send: (data: string) => {
-          channel.postMessage(JSON.parse(data));
-          // Also store in session for polling
-          storeSignal(JSON.parse(data));
-        },
-        readyState: WebSocket.OPEN,
-        close: () => channel.close(),
-      } as unknown as WebSocket;
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data) as SignalMessage;
+          handleSignalMessage(msg);
+        } catch (err) {
+          console.error("[Signaling] Failed to parse:", err);
+        }
+      };
 
-      // Start polling for cross-device signals
-      const pollInterval = setInterval(() => pollSignals(), 2000);
+      ws.onclose = () => {
+        setStatus("Disconnected. Reconnecting...");
+        // Reconnect after 3 seconds
+        setTimeout(() => {
+          if (wsRef.current === ws) {
+            connectSignaling();
+          }
+        }, 3000);
+      };
+
+      ws.onerror = (err) => {
+        console.error("[Signaling] WebSocket error:", err);
+      };
 
       return () => {
-        channel.close();
-        clearInterval(pollInterval);
+        ws.close();
       };
     };
 
     const cleanup = connectSignaling();
-
-    // Send join message
-    sendSignal({
-      type: "join",
-      role,
-      username: user.username,
-      roomId,
-    });
 
     return () => {
       cleanup?.();
@@ -165,42 +172,6 @@ function RoomContent() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, roomId, role]);
-
-  // Store signals in sessionStorage for cross-tab communication
-  const storeSignal = (msg: SignalMessage) => {
-    try {
-      const key = `partme-signals-${roomId}`;
-      const existing = JSON.parse(sessionStorage.getItem(key) || "[]");
-      existing.push({ ...msg, timestamp: Date.now() });
-      // Keep only last 100 messages
-      if (existing.length > 100) existing.splice(0, existing.length - 100);
-      sessionStorage.setItem(key, JSON.stringify(existing));
-    } catch {
-      // sessionStorage may fail in some contexts
-    }
-  };
-
-  // Poll for signals from other tabs/devices
-  const pollSignals = () => {
-    try {
-      const key = `partme-signals-${roomId}`;
-      const signals = JSON.parse(sessionStorage.getItem(key) || "[]");
-      // Process new signals
-      const lastProcessed = parseInt(sessionStorage.getItem(`partme-last-${roomId}`) || "0");
-      const newSignals = signals.filter(
-        (s: SignalMessage & { timestamp: number }) => s.timestamp > lastProcessed
-      );
-      newSignals.forEach((msg: SignalMessage) => handleSignalMessage(msg));
-      if (signals.length > 0) {
-        sessionStorage.setItem(
-          `partme-last-${roomId}`,
-          String(signals[signals.length - 1].timestamp)
-        );
-      }
-    } catch {
-      // Ignore polling errors
-    }
-  };
 
   // Handle incoming signaling messages
   const handleSignalMessage = useCallback(
